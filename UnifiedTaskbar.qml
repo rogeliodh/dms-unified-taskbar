@@ -39,20 +39,42 @@ PluginComponent {
         }
     }
 
-    readonly property bool groupByApp: pluginData.groupByApp ?? false
-    readonly property bool compactMode: pluginData.compactMode ?? false
-    readonly property bool allMonitors: pluginData.allMonitors ?? false
-    readonly property bool currentWorkspaceOnly: pluginData.currentWorkspaceOnly ?? false
-    readonly property var hiddenAppIds: String(pluginData.hiddenAppIds ?? "")
-        .split(",").map(s => s.trim()).filter(s => s !== "")
-    readonly property var ungroupAppIds: String(pluginData.ungroupAppIds ?? "")
-        .split(",").map(s => s.trim()).filter(s => s !== "")
-    readonly property bool reverseMonitorOrder: pluginData.reverseMonitorOrder ?? false
-    readonly property bool filledPills: pluginData.filledPills ?? false
+    // Per-screen settings: pluginData.screenOverrides is a JSON object keyed by
+    // screen (output) name whose keys override the global plugin settings for
+    // that monitor only, e.g.
+    //   {"HDMI-A-2": {"ungroupAppIds": "firefox_firefox", "compactMode": true}}
+    readonly property var screenOverrides: {
+        try {
+            const parsed = JSON.parse(String(pluginData.screenOverrides ?? ""));
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
 
-    readonly property real iconPadding: pluginData.iconPadding !== undefined ? pluginData.iconPadding : Theme.spacingS
-    readonly property real itemSpacing: pluginData.itemSpacing !== undefined ? pluginData.itemSpacing : Theme.spacingXS
-    readonly property real workspaceSpacing: pluginData.workspaceSpacing !== undefined ? pluginData.workspaceSpacing : Theme.spacingXS
+    function setting(key, fallback) {
+        const override = root.screenOverrides[root.screenName];
+        if (override && override[key] !== undefined)
+            return override[key];
+        return pluginData[key] !== undefined ? pluginData[key] : fallback;
+    }
+
+    function appIdList(value) {
+        return String(value ?? "").split(",").map(s => s.trim()).filter(s => s !== "");
+    }
+
+    readonly property bool groupByApp: setting("groupByApp", false)
+    readonly property bool compactMode: setting("compactMode", false)
+    readonly property bool allMonitors: setting("allMonitors", false)
+    readonly property bool currentWorkspaceOnly: setting("currentWorkspaceOnly", false)
+    readonly property var hiddenAppIds: appIdList(setting("hiddenAppIds", ""))
+    readonly property var ungroupAppIds: appIdList(setting("ungroupAppIds", ""))
+    readonly property bool reverseMonitorOrder: setting("reverseMonitorOrder", false)
+    readonly property bool filledPills: setting("filledPills", false)
+
+    readonly property real iconPadding: setting("iconPadding", Theme.spacingS)
+    readonly property real itemSpacing: setting("itemSpacing", Theme.spacingXS)
+    readonly property real workspaceSpacing: setting("workspaceSpacing", Theme.spacingXS)
 
     readonly property real iconCellSize: widgetThickness - ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), 1)) * 2
 

@@ -88,4 +88,12 @@ PluginSettings {
         maximum: 20
         defaultValue: 4
     }
+
+    StringSetting {
+        settingKey: "screenOverrides"
+        label: "Per-Screen Overrides (JSON)"
+        description: "Override any setting for a specific monitor, keyed by output name — e.g. {\"HDMI-A-2\": {\"ungroupAppIds\": \"firefox_firefox\"}}"
+        placeholder: "{\"HDMI-A-2\": {\"compactMode\": true}}"
+        defaultValue: ""
+    }
 }
