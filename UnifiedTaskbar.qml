@@ -76,6 +76,14 @@ PluginComponent {
     readonly property real itemSpacing: setting("itemSpacing", Theme.spacingXS)
     readonly property real workspaceSpacing: setting("workspaceSpacing", Theme.spacingXS)
 
+    // Maximum width of the context menu (grouped-window list), bounded by the
+    // screen so the popup can never exceed the monitor.
+    readonly property real menuWidth: {
+        const configured = Number(setting("menuWidth", 360));
+        const limit = root.parentScreen ? root.parentScreen.width - 24 : 360;
+        return Math.max(180, Math.min(isFinite(configured) ? configured : 360, limit));
+    }
+
     readonly property real iconCellSize: widgetThickness - ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), 1)) * 2
 
     property int _desktopEntriesUpdateTrigger: 0
@@ -312,6 +320,47 @@ PluginComponent {
                 && currentEntryRecord.isGrouped && (currentEntryRecord.windows || []).length > 1
             readonly property real menuMaxHeight: Math.max(1, contextMenuWindow.height - 20)
 
+            // Labels the menu must fit. A Column's implicitWidth follows the
+            // widest child *width*, and the real rows fill the menu (width bound
+            // to the container), so they cannot size it — measure the labels in
+            // a hidden column of NoWrap text instead.
+            readonly property var menuSamples: {
+                const samples = [];
+                // Only measure rows that are actually rendered: a single-window
+                // entry has no window list (just "Close"), so measuring its title
+                // would size the menu for text it never shows.
+                if (windowSelectionVisible) {
+                    const payloads = currentEntryRecord && currentEntryRecord.payloads ? currentEntryRecord.payloads : [];
+                    for (let i = 0; i < payloads.length; i++)
+                        samples.push(payloads[i] && payloads[i].title ? payloads[i].title : I18n.tr("(Unnamed)"));
+                }
+                if (hasDesktopActions) {
+                    const actions = desktopEntry && desktopEntry.actions ? desktopEntry.actions : [];
+                    for (let j = 0; j < actions.length; j++)
+                        samples.push(actions[j] && actions[j].name ? actions[j].name : "");
+                }
+                if (hasWindows) samples.push(I18n.tr("Close"));
+                if (closeAllVisible) samples.push(I18n.tr("Close All"));
+                return samples;
+            }
+
+            // Extra room for the per-window close button, only when the window
+            // list (the rows that have one) is shown.
+            readonly property real menuRowChrome: windowSelectionVisible ? (Theme.spacingXS * 2 + 20) : 0
+
+            Column {
+                id: menuMeasureColumn
+                visible: false
+                Repeater {
+                    model: contextMenuWindow.menuSamples
+                    StyledText {
+                        text: modelData
+                        font.pixelSize: Theme.fontSizeSmall
+                        wrapMode: Text.NoWrap
+                    }
+                }
+            }
+
             function showAt(x, y, vertical, barEdge, entryRecord, entryKey) {
                 screen = root.parentScreen;
                 anchorPos = Qt.point(x, y);
@@ -398,7 +447,7 @@ PluginComponent {
                         return Math.min(contextMenuWindow.height - height - 10, contextMenuWindow.anchorPos.y);
                     return Math.max(10, contextMenuWindow.anchorPos.y - height);
                 }
-                width: Math.min(360, Math.max(180, menuColumn.implicitWidth + Theme.spacingS * 2))
+                width: Math.min(root.menuWidth, Math.max(180, menuMeasureColumn.implicitWidth + Theme.spacingS * 2 + contextMenuWindow.menuRowChrome))
                 height: Math.min(
                     Math.max(60, menuFlickable.contentHeight + Theme.spacingS * 2),
                     contextMenuWindow.menuMaxHeight)
@@ -445,6 +494,7 @@ PluginComponent {
                                     ? modelData.title : I18n.tr("(Unnamed)")
                                 font.pixelSize: Theme.fontSizeSmall
                                 color: Theme.widgetTextColor
+                                wrapMode: Text.NoWrap
                                 elide: Text.ElideRight
                                 maximumLineCount: 1
                             }
@@ -523,6 +573,7 @@ PluginComponent {
                                 text: modelData && modelData.name ? modelData.name : ""
                                 font.pixelSize: Theme.fontSizeSmall
                                 color: Theme.widgetTextColor
+                                wrapMode: Text.NoWrap
                                 elide: Text.ElideRight
                                 maximumLineCount: 1
                             }
@@ -564,6 +615,7 @@ PluginComponent {
                             text: I18n.tr("Close")
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.widgetTextColor
+                            wrapMode: Text.NoWrap
                             elide: Text.ElideRight
                             maximumLineCount: 1
                         }
@@ -599,6 +651,7 @@ PluginComponent {
                             font.pixelSize: Theme.fontSizeSmall
                             color: closeAllArea.containsMouse
                                 ? Theme.error : Theme.widgetTextColor
+                            wrapMode: Text.NoWrap
                             elide: Text.ElideRight
                             maximumLineCount: 1
                         }

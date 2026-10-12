@@ -89,6 +89,15 @@ PluginSettings {
         defaultValue: 4
     }
 
+    SliderSetting {
+        settingKey: "menuWidth"
+        label: "Menu Width"
+        description: "Maximum width (px) of the grouped-window context menu, so more of each title is visible"
+        minimum: 180
+        maximum: 900
+        defaultValue: 360
+    }
+
     StringSetting {
         settingKey: "screenOverrides"
         label: "Per-Screen Overrides (JSON)"
