@@ -34,6 +34,14 @@ PluginSettings {
         defaultValue: false
     }
 
+    StringSetting {
+        settingKey: "hiddenAppIds"
+        label: "Hidden Apps"
+        description: "App IDs to hide from the taskbar, comma-separated (e.g. quake)"
+        placeholder: "quake"
+        defaultValue: ""
+    }
+
     ToggleSetting {
         settingKey: "reverseMonitorOrder"
         label: "Reverse Monitor Order"
