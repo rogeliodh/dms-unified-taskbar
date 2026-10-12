@@ -28,6 +28,13 @@ PluginSettings {
     }
 
     ToggleSetting {
+        settingKey: "currentWorkspaceOnly"
+        label: "Current Workspace Only"
+        description: "Show only the active workspace pill instead of every workspace with windows"
+        defaultValue: false
+    }
+
+    ToggleSetting {
         settingKey: "reverseMonitorOrder"
         label: "Reverse Monitor Order"
         description: "Reverse the order in which monitors are displayed when showing all monitors"
