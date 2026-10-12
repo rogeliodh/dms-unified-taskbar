@@ -193,7 +193,12 @@ test("context_menu_preserves_grouped_selection_actions_close_and_positioning", (
     assert.match(qml, /text: I18n\.tr\("Close All"\)/);
     assert.match(qml, /readonly property bool closeAllVisible: root\.groupByApp/);
     assert.match(qml, /currentEntryRecord\.closeAllWindows\(\)/);
-    assert.match(qml, /width: Math\.min\(360, Math\.max\(180, menuColumn\.implicitWidth/);
+    assert.match(qml, /readonly property real menuWidth: \{/);
+    assert.match(qml, /width: Math\.min\(root\.menuWidth, Math\.max\(180, menuMeasureColumn\.implicitWidth/);
+    assert.match(qml, /id: menuMeasureColumn/);
+    assert.match(qml, /readonly property var menuSamples: \{/);
+    assert.match(qml, /if \(windowSelectionVisible\) \{/);
+    assert.match(qml, /readonly property real menuRowChrome:/);
     assert.match(qml, /height: Math\.min\(/);
     assert.match(qml, /menuFlickable\.contentHeight \+ Theme\.spacingS \* 2/);
     assert.match(qml, /id: menuFlickable/);
