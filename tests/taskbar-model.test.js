@@ -77,6 +77,7 @@ function snapshot(options = {}) {
     return {
         compositor: options.compositor || "niri",
         groupByApp: options.groupByApp === true,
+        ungroupAppIds: Array.isArray(options.ungroupAppIds) ? options.ungroupAppIds : [],
         workspaces: options.workspaces || [],
         windows: options.windows || [],
     };
@@ -155,6 +156,46 @@ test("group_first_occurrence_order", () => {
         windows[2].toplevel,
     ], "windows within a group retain sortedToplevels order");
     assert.equal(entries[0].toplevel, windows[0].toplevel, "the first window remains the representative");
+});
+
+test("ungroup_app_ids_never_merge_listed_apps", () => {
+    const windows = [
+        windowRecord("browser-1", 1, "browser", { niriWindowId: "browser-1" }),
+        windowRecord("editor", 1, "editor", { niriWindowId: "editor" }),
+        windowRecord("browser-2", 1, "browser", { niriWindowId: "browser-2" }),
+        windowRecord("editor-2", 1, "editor", { niriWindowId: "editor-2" }),
+    ];
+    const result = bucket(snapshot({
+        groupByApp: true,
+        ungroupAppIds: ["browser"],
+        workspaces: [workspace(1)],
+        windows,
+    }));
+    const entries = result.workspaces[0].entries;
+
+    assert.deepEqual(Array.from(entries, entry => entry.appId), ["browser", "editor", "browser"]);
+    assert.equal(entries[0].isGrouped, false);
+    assert.equal(entries[0].windows.length, 1);
+    assert.equal(entries[0].entryKey, entries[0].windows[0].key, "an ungrouped window keeps its own entry key");
+    assert.equal(entries[2].windows.length, 1);
+    assert.equal(entries[1].isGrouped, true);
+    assert.deepEqual(Array.from(entries[1].windows, item => item.toplevel), [windows[1].toplevel, windows[3].toplevel]);
+});
+
+test("ungroup_app_ids_change_rebuilds_structure", () => {
+    const state = model.createIdentityState();
+    const windows = [
+        windowRecord("browser-1", 1, "browser", { niriWindowId: "browser-1" }),
+        windowRecord("browser-2", 1, "browser", { niriWindowId: "browser-2" }),
+    ];
+    const grouped = bucket(snapshot({ groupByApp: true, workspaces: [workspace(1)], windows }), state);
+    const ungrouped = bucket(snapshot({
+        groupByApp: true, ungroupAppIds: ["browser"], workspaces: [workspace(1)], windows,
+    }), state);
+
+    assert.equal(grouped.workspaces[0].entries.length, 1);
+    assert.equal(ungrouped.workspaces[0].entries.length, 2);
+    assert.equal(model.sameStructure(grouped, ungrouped), false);
 });
 
 test("empty_active_visibility", () => {

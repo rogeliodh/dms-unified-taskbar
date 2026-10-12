@@ -45,6 +45,8 @@ PluginComponent {
     readonly property bool currentWorkspaceOnly: pluginData.currentWorkspaceOnly ?? false
     readonly property var hiddenAppIds: String(pluginData.hiddenAppIds ?? "")
         .split(",").map(s => s.trim()).filter(s => s !== "")
+    readonly property var ungroupAppIds: String(pluginData.ungroupAppIds ?? "")
+        .split(",").map(s => s.trim()).filter(s => s !== "")
     readonly property bool reverseMonitorOrder: pluginData.reverseMonitorOrder ?? false
     readonly property bool filledPills: pluginData.filledPills ?? false
 
@@ -230,7 +232,8 @@ PluginComponent {
                 activated: !!w.activated
             });
         }
-        return { compositor: compositor, workspaces: workspaces, windows: windows, groupByApp: root.groupByApp };
+        return { compositor: compositor, workspaces: workspaces, windows: windows, groupByApp: root.groupByApp,
+            ungroupAppIds: root.ungroupAppIds };
     }
 
     TaskbarModel {
