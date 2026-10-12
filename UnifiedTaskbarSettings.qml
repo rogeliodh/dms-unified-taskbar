@@ -20,6 +20,14 @@ PluginSettings {
         defaultValue: false
     }
 
+    StringSetting {
+        settingKey: "ungroupAppIds"
+        label: "Ungroup Apps"
+        description: "App IDs that are never grouped (one entry per window), comma-separated"
+        placeholder: "e.g. app_id, other_app"
+        defaultValue: ""
+    }
+
     ToggleSetting {
         settingKey: "allMonitors"
         label: "Show All Monitors"

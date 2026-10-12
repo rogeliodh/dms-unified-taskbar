@@ -118,7 +118,9 @@ function sameStructure(previous, next) {
     if (previous === next) return true;
     var a = previous && Array.isArray(previous.workspaces) ? previous.workspaces : [];
     var b = next && Array.isArray(next.workspaces) ? next.workspaces : [];
-    if (!!(previous && previous.groupByApp) !== !!(next && next.groupByApp) || a.length !== b.length) return false;
+    if (!!(previous && previous.groupByApp) !== !!(next && next.groupByApp)
+            || (previous && previous.groupSignature) !== (next && next.groupSignature)
+            || a.length !== b.length) return false;
     for (var i = 0; i < a.length; i++) if (!_sameWorkspaceDescriptor(a[i], b[i])) return false;
     return true;
 }
@@ -154,7 +156,7 @@ function _refreshEntry(entry) {
     }
 }
 
-function _refreshEntries(entries, wsWindows, grouped) {
+function _refreshEntries(entries, wsWindows, grouped, ungroupSet) {
     if (!grouped) {
         for (var i = 0; i < wsWindows.length; i++) {
             _copyWindowPayload(entries[i].windows[0], wsWindows[i]);
@@ -163,12 +165,22 @@ function _refreshEntries(entries, wsWindows, grouped) {
         return;
     }
     var groups = new Map();
+    var singleton = new Map();
+    for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+        var record = entries[entryIndex];
+        if (record.isGrouped) groups.set(record.groupKey !== undefined ? record.groupKey : record.appId, record);
+        else if (record.windows[0]) singleton.set(record.windows[0].key, record);
+    }
     var positions = new Map();
-    for (var entryIndex = 0; entryIndex < entries.length; entryIndex++)
-        groups.set(entries[entryIndex].appId, entries[entryIndex]);
     for (var windowIndex = 0; windowIndex < wsWindows.length; windowIndex++) {
         var window = wsWindows[windowIndex];
+        if (ungroupSet && ungroupSet.has(window.appId)) {
+            var single = singleton.get(window.key);
+            if (single) _copyWindowPayload(single.windows[0], window);
+            continue;
+        }
         var entry = groups.get(window.appId);
+        if (!entry) continue;
         var position = positions.has(window.appId) ? positions.get(window.appId) : 0;
         _copyWindowPayload(entry.windows[position], window);
         positions.set(window.appId, position + 1);
@@ -176,8 +188,8 @@ function _refreshEntries(entries, wsWindows, grouped) {
     for (var refreshIndex = 0; refreshIndex < entries.length; refreshIndex++) _refreshEntry(entries[refreshIndex]);
 }
 
-function _sourceMatches(workspace, wsWindows, grouped) {
-    if (!workspace || workspace._groupByApp !== grouped || !workspace._sourceWindows) return false;
+function _sourceMatches(workspace, wsWindows, groupSignature) {
+    if (!workspace || workspace._groupByApp !== groupSignature || !workspace._sourceWindows) return false;
     var prior = workspace._sourceWindows;
     if (prior.length !== wsWindows.length) return false;
     for (var i = 0; i < wsWindows.length; i++) {
@@ -236,6 +248,11 @@ function bucketSnapshot(snapshot, identityState, options) {
     for (var previousIndex = 0; previousIndex < previousVisible.length; previousIndex++)
         previousById.set(previousVisible[previousIndex].workspaceId, previousVisible[previousIndex]);
     var grouped = snapshot.groupByApp === true;
+    var ungroupAppIds = Array.isArray(snapshot.ungroupAppIds) ? snapshot.ungroupAppIds.map(String) : [];
+    var ungroupSet = new Set(ungroupAppIds);
+    // Window entries are only reusable when the grouping *signature* (on/off +
+    // the ungroup list) is unchanged, so an ungroupAppIds edit rebuilds them.
+    var groupSignature = (grouped ? "1" : "0") + "|" + ungroupAppIds.slice().sort().join("\u0000");
     var commonDwlWindows = compositor.toLowerCase() === "dwl" ? windows : null;
     var commonDwlEntries = null;
     if (commonDwlWindows && commonDwlWindows.length > 0) {
@@ -245,11 +262,11 @@ function bucketSnapshot(snapshot, identityState, options) {
         for (var dwlIndex = 0; dwlIndex < previousVisible.length; dwlIndex++) {
             if (previousVisible[dwlIndex].hasClients) { priorDwl = previousVisible[dwlIndex]; break; }
         }
-        if (_sourceMatches(priorDwl, commonDwlWindows, grouped)) {
-            _refreshEntries(priorDwl.entries, commonDwlWindows, grouped);
+        if (_sourceMatches(priorDwl, commonDwlWindows, groupSignature)) {
+            _refreshEntries(priorDwl.entries, commonDwlWindows, grouped, ungroupSet);
             commonDwlEntries = priorDwl.entries;
         } else {
-            commonDwlEntries = _makeEntries(commonDwlWindows, grouped);
+            commonDwlEntries = _makeEntries(commonDwlWindows, grouped, ungroupSet);
         }
     }
 
@@ -261,11 +278,11 @@ function bucketSnapshot(snapshot, identityState, options) {
             : (windowsByWorkspace.get(currentWorkspace.workspaceId) || _emptyWindows);
         if (wsWindows.length === 0 && !currentWorkspace.active) continue;
         var priorWorkspace = previousById.get(currentWorkspace.workspaceId);
-        var sourceMatches = _sourceMatches(priorWorkspace, wsWindows, grouped);
+        var sourceMatches = _sourceMatches(priorWorkspace, wsWindows, groupSignature);
         if (sourceMatches) {
             // No entry/window arrays are allocated on this path. Refresh the
             // existing payload objects and retain all structural references.
-            _refreshEntries(priorWorkspace.entries, wsWindows, grouped);
+            _refreshEntries(priorWorkspace.entries, wsWindows, grouped, ungroupSet);
             priorWorkspace.workspace = currentWorkspace.workspace;
             priorWorkspace.active = currentWorkspace.active;
             priorWorkspace.hasClients = currentWorkspace.hasClients;
@@ -279,37 +296,49 @@ function bucketSnapshot(snapshot, identityState, options) {
         else if (commonDwlWindows && currentWorkspace.hasClients && commonDwlEntries)
             entries = _cloneEntries(commonDwlEntries);
         else
-            entries = _makeEntries(wsWindows, grouped);
+            entries = _makeEntries(wsWindows, grouped, ungroupSet);
         currentWorkspace.entries = entries;
         currentWorkspace._sourceWindows = wsWindows;
-        currentWorkspace._groupByApp = grouped;
+        currentWorkspace._groupByApp = groupSignature;
         visibleScratch.push(currentWorkspace);
     }
 
-    var structureSame = !!previous && previous.groupByApp === grouped && previousVisible.length === visibleScratch.length;
+    var structureSame = !!previous && previous.groupSignature === groupSignature && previousVisible.length === visibleScratch.length;
     if (structureSame) {
         for (var structureIndex = 0; structureIndex < visibleScratch.length; structureIndex++) {
             if (previousVisible[structureIndex] !== visibleScratch[structureIndex]) { structureSame = false; break; }
         }
     }
     var visible = structureSame ? previousVisible : visibleScratch;
-    return { compositor: compositor, groupByApp: grouped, windows: windows, workspaces: visible,
+    return { compositor: compositor, groupByApp: grouped, groupSignature: groupSignature, ungroupAppIds: ungroupAppIds,
+        windows: windows, workspaces: visible,
         selectedWorkspaces: selected, duplicateWindowKeys: duplicateWindowKeys, identityState: identityState };
 }
 
 function normalizeSnapshot(snapshot, identityState, options) { return bucketSnapshot(snapshot, identityState, options); }
 function reconcileSnapshot(snapshot, identityState, options) { return bucketSnapshot(snapshot, identityState, options); }
 
-function _makeEntries(wsWindows, grouped) {
+function _makeEntries(wsWindows, grouped, ungroupSet) {
     var entries = [];
     if (grouped) {
         var groups = new Map();
         for (var i = 0; i < wsWindows.length; i++) {
             var win = wsWindows[i];
-            if (!groups.has(win.appId)) groups.set(win.appId, { entryKey: "group:" + win.appId, appId: win.appId, isGrouped: true, windows: [] });
-            groups.get(win.appId).windows.push(win);
+            // Apps listed in ungroupAppIds are never merged: one entry per window.
+            if (ungroupSet && ungroupSet.has(win.appId)) {
+                entries.push(_finishEntry({ entryKey: win.key, appId: win.appId, isGrouped: false, windows: [win] }));
+                continue;
+            }
+            var entry = groups.get(win.appId);
+            if (!entry) {
+                entry = { entryKey: "group:" + win.appId, appId: win.appId, groupKey: win.appId, isGrouped: true, windows: [] };
+                groups.set(win.appId, entry);
+                entries.push(entry);
+            }
+            entry.windows.push(win);
         }
-        groups.forEach(function (entry) { entries.push(_finishEntry(entry)); });
+        for (var finishIndex = 0; finishIndex < entries.length; finishIndex++)
+            if (entries[finishIndex].isGrouped) _finishEntry(entries[finishIndex]);
     } else {
         for (var j = 0; j < wsWindows.length; j++) {
             var ungrouped = wsWindows[j];
@@ -326,7 +355,7 @@ function _cloneEntries(entries) {
     var result = [];
     for (var i = 0; i < entries.length; i++) {
         var entry = entries[i];
-        result.push({ entryKey: entry.entryKey, appId: entry.appId, isGrouped: entry.isGrouped, windows: entry.windows.slice(),
+        result.push({ entryKey: entry.entryKey, appId: entry.appId, groupKey: entry.groupKey, isGrouped: entry.isGrouped, windows: entry.windows.slice(),
             toplevel: entry.toplevel, title: entry.title, focused: entry.focused, activatedWindowIndex: entry.activatedWindowIndex });
     }
     return result;
