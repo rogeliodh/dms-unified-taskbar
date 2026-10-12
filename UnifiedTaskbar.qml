@@ -43,6 +43,8 @@ PluginComponent {
     readonly property bool compactMode: pluginData.compactMode ?? false
     readonly property bool allMonitors: pluginData.allMonitors ?? false
     readonly property bool currentWorkspaceOnly: pluginData.currentWorkspaceOnly ?? false
+    readonly property var hiddenAppIds: String(pluginData.hiddenAppIds ?? "")
+        .split(",").map(s => s.trim()).filter(s => s !== "")
     readonly property bool reverseMonitorOrder: pluginData.reverseMonitorOrder ?? false
     readonly property bool filledPills: pluginData.filledPills ?? false
 
@@ -218,9 +220,12 @@ PluginComponent {
             else if (CompositorService.isHyprland) workspaceId = membership.get(w);
             else if (CompositorService.isSway || CompositorService.isScroll || CompositorService.isMiracle)
                 workspaceId = w.workspace?.num;
+            const appId = Paths.moddedAppId(w.appId || "unknown");
+            if (root.hiddenAppIds.indexOf(appId) !== -1)
+                continue;
             windows.push({
                 toplevel: w, niriWindowId: CompositorService.isNiri ? w.niriWindowId : undefined,
-                workspaceId: workspaceId, appId: Paths.moddedAppId(w.appId || "unknown"),
+                workspaceId: workspaceId, appId: appId,
                 title: w.title || "(Unnamed)", focused: !!(w.activated || w.is_focused),
                 activated: !!w.activated
             });
