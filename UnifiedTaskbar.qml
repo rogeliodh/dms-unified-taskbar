@@ -83,6 +83,7 @@ PluginComponent {
         const limit = root.parentScreen ? root.parentScreen.width - 24 : 360;
         return Math.max(180, Math.min(isFinite(configured) ? configured : 360, limit));
     }
+    readonly property string menuAlignment: setting("menuAlignment", "center")
 
     readonly property real iconCellSize: widgetThickness - ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), 1)) * 2
 
@@ -296,7 +297,7 @@ PluginComponent {
             if (root._pendingContextMenu && item) {
                 const pending = root._pendingContextMenu;
                 item.showAt(pending.x, pending.y, root.isVertical, root.axis?.edge,
-                    pending.entryRecord, pending.entryKey);
+                    pending.entryRecord, pending.entryKey, pending.anchorWidth);
                 root._pendingContextMenu = null;
             }
         }
@@ -309,6 +310,7 @@ PluginComponent {
                 ? DesktopEntries.heuristicLookup(currentEntryRecord.appId) : null
             property bool isVisible: false
             property point anchorPos: Qt.point(0, 0)
+            property real anchorWidth: 0
             property bool isVertical: false
             property string edge: "bottom"
             readonly property bool windowSelectionVisible: root.groupByApp && currentEntryRecord
@@ -361,9 +363,10 @@ PluginComponent {
                 }
             }
 
-            function showAt(x, y, vertical, barEdge, entryRecord, entryKey) {
+            function showAt(x, y, vertical, barEdge, entryRecord, entryKey, entryWidth) {
                 screen = root.parentScreen;
                 anchorPos = Qt.point(x, y);
+                anchorWidth = entryWidth || 0;
                 isVertical = vertical ?? false;
                 edge = barEdge ?? "bottom";
                 currentEntryRecord = entryRecord || null;
@@ -435,7 +438,10 @@ PluginComponent {
                         return Math.max(10, Math.min(contextMenuWindow.width - width - 10,
                             contextMenuWindow.anchorPos.x - width));
                     }
-                    const want = contextMenuWindow.anchorPos.x - width / 2;
+                    const anchorLeft = contextMenuWindow.anchorPos.x;
+                    const want = root.menuAlignment === "left"
+                        ? anchorLeft
+                        : anchorLeft + contextMenuWindow.anchorWidth / 2 - width / 2;
                     return Math.max(10, Math.min(contextMenuWindow.width - width - 10, want));
                 }
                 y: {
@@ -960,7 +966,7 @@ PluginComponent {
                     } else if (mouse.button === Qt.MiddleButton) {
                         if (appEntry.entryData) appEntry.entryData.closeRepresentative();
                     } else if (mouse.button === Qt.RightButton) {
-                        const globalPos = appEntry.mapToGlobal(appEntry.width / 2, 0);
+                        const globalPos = appEntry.mapToGlobal(0, 0);
                         const screenX = root.parentScreen ? root.parentScreen.x : 0;
                         const screenY = root.parentScreen ? root.parentScreen.y : 0;
                         let menuX, menuY;
@@ -985,7 +991,8 @@ PluginComponent {
                             "entryRecord": appEntry.entryData,
                             "entryKey": appEntry.entryData ? appEntry.entryData.entryKey : "",
                             "x": menuX,
-                            "y": menuY
+                            "y": menuY,
+                            "anchorWidth": appEntry.width
                         };
                         windowContextMenuLoader.active = true;
                     }

@@ -208,6 +208,10 @@ test("context_menu_preserves_grouped_selection_actions_close_and_positioning", (
     assert.match(qml, /interactive: contentHeight > height/);
     assert.match(qml, /contextMenuWindow\.anchorPos\.y - height \/ 2/);
     assert.match(qml, /contextMenuWindow\.edge === "top"/);
+    assert.match(qml, /readonly property string menuAlignment: setting\("menuAlignment", "center"\)/);
+    assert.match(qml, /root\.menuAlignment === "left"/);
+    assert.match(qml, /appEntry\.mapToGlobal\(0, 0\)/);
+    assert.match(qml, /pending\.anchorWidth/);
     assert.doesNotMatch(qml, /currentWindow/);
 });
 

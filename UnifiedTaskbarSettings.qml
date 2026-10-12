@@ -98,6 +98,17 @@ PluginSettings {
         defaultValue: 360
     }
 
+    SelectionSetting {
+        settingKey: "menuAlignment"
+        label: "Menu Alignment"
+        description: "Where the context menu is anchored horizontally relative to the entry"
+        options: [
+            { value: "center", label: "Centered on the entry" },
+            { value: "left", label: "Aligned to the entry's left" }
+        ]
+        defaultValue: "center"
+    }
+
     StringSetting {
         settingKey: "screenOverrides"
         label: "Per-Screen Overrides (JSON)"
