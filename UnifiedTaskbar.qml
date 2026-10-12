@@ -42,6 +42,7 @@ PluginComponent {
     readonly property bool groupByApp: pluginData.groupByApp ?? false
     readonly property bool compactMode: pluginData.compactMode ?? false
     readonly property bool allMonitors: pluginData.allMonitors ?? false
+    readonly property bool currentWorkspaceOnly: pluginData.currentWorkspaceOnly ?? false
     readonly property bool reverseMonitorOrder: pluginData.reverseMonitorOrder ?? false
     readonly property bool filledPills: pluginData.filledPills ?? false
 
@@ -55,6 +56,13 @@ PluginComponent {
     property int _appIdSubstitutionsTrigger: 0
 
     function getWorkspaceList() {
+        let list = getWorkspaceListUnfiltered();
+        if (root.currentWorkspaceOnly)
+            list = list.filter(ws => root.isWorkspaceActive(ws));
+        return list;
+    }
+
+    function getWorkspaceListUnfiltered() {
         if (CompositorService.isNiri) {
             let workspaces;
             if (root.allMonitors) {
