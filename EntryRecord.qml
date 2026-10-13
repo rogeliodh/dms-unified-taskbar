@@ -11,6 +11,7 @@ QtObject {
     property var toplevel: null
     property bool focused: false
     property string title: ""
+    property int unreadCount: 0
     property int activatedWindowIndex: -1
 
     function _windowAt(index) {

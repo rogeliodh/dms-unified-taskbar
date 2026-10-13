@@ -144,6 +144,7 @@ QtObject {
         _setProperty(record, "toplevel", descriptor.toplevel || null);
         _setProperty(record, "focused", descriptor.focused === true);
         _setProperty(record, "title", descriptor.title || "");
+        _setProperty(record, "unreadCount", descriptor.unreadCount || 0);
         _setProperty(record, "activatedWindowIndex", descriptor.activatedWindowIndex === undefined ? -1 : descriptor.activatedWindowIndex);
         return record;
     }

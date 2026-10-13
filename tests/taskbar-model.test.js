@@ -25,6 +25,7 @@ function loadProductionModel() {
         "sameStructure",
         "compareStructure",
         "structuralEqual",
+        "splitTitleCount",
     ];
     const context = vm.createContext({});
     const exportSource = `${source}
@@ -592,4 +593,71 @@ test("structure_comparison_detects_membership_and_grouping_changes", () => {
 
     assert.equal(model.sameStructure(base, added), false);
     assert.equal(model.sameStructure(base, grouped), false);
+});
+
+test("title_unread_count_splits_into_badge_count", () => {
+    // splitTitleCount runs inside the VM realm, so re-wrap its result before
+    // comparing it with a strict deep equal.
+    const split = title => {
+        const parsed = model.splitTitleCount(title);
+        return { count: parsed.count, title: parsed.title, rawTitle: parsed.rawTitle };
+    };
+
+    assert.deepEqual(split("(3) WhatsApp"), { count: 3, title: "WhatsApp", rawTitle: "(3) WhatsApp" });
+    assert.deepEqual(split("(12)  Teams | Microsoft Teams"), { count: 12, title: "Teams | Microsoft Teams", rawTitle: "(12)  Teams | Microsoft Teams" });
+    assert.deepEqual(split("(1)"), { count: 1, title: "(1)", rawTitle: "(1)" }, "a count with no title keeps the raw text");
+    assert.deepEqual(split("Report (1) - editor"), { count: 0, title: "Report (1) - editor", rawTitle: "Report (1) - editor" }, "only a leading count is a badge");
+    assert.deepEqual(split(""), { count: 0, title: "", rawTitle: "" });
+
+    const result = bucket(snapshot({
+        workspaces: [workspace(1)],
+        windows: [
+            windowRecord("chat", 1, "elecwhat", { niriWindowId: "chat", title: "(4) WhatsApp" }),
+            windowRecord("docs", 1, "editor", { niriWindowId: "docs", title: "notes.md" }),
+        ],
+    }));
+
+    assert.equal(result.windows[0].unreadCount, 4);
+    assert.equal(result.windows[0].title, "(4) WhatsApp", "the model preview keeps the raw title the view strips");
+    assert.equal(entryFor(result, 1).unreadCount, 4);
+    assert.equal(entryFor(result, 1).title, "(4) WhatsApp");
+    assert.equal(result.windows[1].unreadCount, 0, "titles without a leading count never badge");
+    assert.equal(result.windows[1].title, "notes.md");
+});
+
+test("grouped_unread_counts_sum_and_refresh_in_place", () => {
+    const state = model.createIdentityState();
+    const first = windowRecord("chat-1", 1, "elecwhat", { niriWindowId: "chat-1", title: "(1) WhatsApp" });
+    const second = windowRecord("chat-2", 1, "elecwhat", { niriWindowId: "chat-2", title: "(2) WhatsApp" });
+    const before = bucket(snapshot({
+        groupByApp: true,
+        workspaces: [workspace(1)],
+        windows: [first, second],
+    }), state);
+    const groupedEntry = entryFor(before, 1);
+
+    assert.equal(groupedEntry.unreadCount, 3, "a grouped entry reports the sum of its windows");
+    assert.equal(groupedEntry.title, "(1) WhatsApp");
+
+    const read = windowRecord("chat-1", 1, "elecwhat", { niriWindowId: "chat-1", title: "WhatsApp" });
+    let after;
+    const allocations = model.countMakeEntries(() => {
+        after = bucket(snapshot({
+            groupByApp: true,
+            workspaces: [workspace(1)],
+            windows: [read, second],
+        }), state, { previousBucket: before });
+    });
+
+    assert.equal(allocations, 0, "a read count refreshes the existing entries");
+    assert.equal(entryFor(after, 1), groupedEntry, "the entry record is reused");
+    assert.equal(entryFor(after, 1).unreadCount, 2);
+
+    const ungrouped = bucket(snapshot({
+        groupByApp: true,
+        ungroupAppIds: ["elecwhat"],
+        workspaces: [workspace(1)],
+        windows: [first, second],
+    }), state);
+    assert.deepEqual(Array.from(ungrouped.workspaces[0].entries, entry => entry.unreadCount), [1, 2], "ungrouped windows keep their own counts");
 });

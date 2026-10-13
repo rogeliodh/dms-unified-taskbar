@@ -64,6 +64,13 @@ PluginSettings {
         defaultValue: false
     }
 
+    ToggleSetting {
+        settingKey: "unreadBadge"
+        label: "Unread Badge"
+        description: "Show the count some apps put at the start of the window title, such as \"(3) WhatsApp\", as a notification badge"
+        defaultValue: true
+    }
+
     SliderSetting {
         settingKey: "iconPadding"
         label: "Icon Padding"
