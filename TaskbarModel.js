@@ -54,6 +54,27 @@ function normalizeAppId(value, normalizer) {
     return raw === null || raw === undefined || raw === "" ? "unknown" : String(raw);
 }
 
+/* Apps such as WhatsApp and Teams prefix the window title with their unread
+   count, e.g. "(3) WhatsApp". The view turns the count into a badge and drops
+   the prefix; the preview keeps the raw title. */
+var _titleCountPrefix = /^\s*\((\d+)\)\s*/;
+
+function splitTitleCount(title) {
+    var raw = title === null || title === undefined ? "" : String(title);
+    var match = _titleCountPrefix.exec(raw);
+    if (!match) return { count: 0, title: raw, rawTitle: raw };
+    var stripped = raw.slice(match[0].length);
+    return { count: parseInt(match[1], 10) || 0, title: stripped === "" ? raw : stripped, rawTitle: raw };
+}
+
+/* A grouped entry reports the sum: two windows with "(1)" mean two unread
+   conversations, not one. */
+function _sumUnread(entry) {
+    var total = 0;
+    for (var i = 0; i < entry.windows.length; i++) total += entry.windows[i].unreadCount || 0;
+    return total;
+}
+
 /* Build once per Hyprland snapshot; callers match the actual Wayland object. */
 function buildHyprlandLookup(toplevels) {
     var values = Array.isArray(toplevels) ? toplevels : (toplevels && Array.isArray(toplevels.values) ? toplevels.values : []);
@@ -72,13 +93,15 @@ function _window(record, compositor, state, options) {
     var workspaceId = record.workspaceId;
     if (workspaceId === undefined && options && options.hyprlandLookup && options.hyprlandLookup.has(object))
         workspaceId = options.hyprlandLookup.get(object);
+    var parsedTitle = splitTitleCount(record.title);
     return {
         key: identityForWindow(record, compositor, state),
         toplevel: record.toplevel === undefined ? record : record.toplevel,
         niriWindowId: record.niriWindowId,
         workspaceId: workspaceId,
         appId: normalizeAppId(record.appId, options && options.normalizeAppId),
-        title: record.title === null || record.title === undefined ? "" : String(record.title),
+        title: parsedTitle.rawTitle,
+        unreadCount: parsedTitle.count,
         focused: record.focused === true,
         activated: record.activated === true,
         source: record
@@ -95,6 +118,7 @@ function _finishEntry(entry) {
         if (entry.windows[i].focused || entry.windows[i].activated) entry.focused = true;
         if (entry.activatedWindowIndex < 0 && entry.windows[i].activated) entry.activatedWindowIndex = i;
     }
+    entry.unreadCount = _sumUnread(entry);
     return entry;
 }
 
@@ -138,6 +162,7 @@ function _copyWindowPayload(target, source) {
     target.workspaceId = source.workspaceId;
     target.appId = source.appId;
     target.title = source.title;
+    target.unreadCount = source.unreadCount || 0;
     target.focused = source.focused;
     target.activated = source.activated;
     target.source = source.source;
@@ -154,6 +179,7 @@ function _refreshEntry(entry) {
         if (entry.windows[i].focused || entry.windows[i].activated) entry.focused = true;
         if (entry.activatedWindowIndex < 0 && entry.windows[i].activated) entry.activatedWindowIndex = i;
     }
+    entry.unreadCount = _sumUnread(entry);
 }
 
 function _refreshEntries(entries, wsWindows, grouped, ungroupSet) {
@@ -356,7 +382,7 @@ function _cloneEntries(entries) {
     for (var i = 0; i < entries.length; i++) {
         var entry = entries[i];
         result.push({ entryKey: entry.entryKey, appId: entry.appId, groupKey: entry.groupKey, isGrouped: entry.isGrouped, windows: entry.windows.slice(),
-            toplevel: entry.toplevel, title: entry.title, focused: entry.focused, activatedWindowIndex: entry.activatedWindowIndex });
+            toplevel: entry.toplevel, title: entry.title, unreadCount: entry.unreadCount, focused: entry.focused, activatedWindowIndex: entry.activatedWindowIndex });
     }
     return result;
 }

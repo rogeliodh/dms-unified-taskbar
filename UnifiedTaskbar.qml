@@ -63,6 +63,14 @@ PluginComponent {
         return String(value ?? "").split(",").map(s => s.trim()).filter(s => s !== "");
     }
 
+    // The badge already carries the count, so the pill label drops the "(N)"
+    // prefix. With the badge disabled the label keeps the raw title, otherwise
+    // the unread count would disappear entirely.
+    function entryLabel(title) {
+        if (!root.unreadBadge) return title;
+        return TaskbarLogic.splitTitleCount(title).title;
+    }
+
     readonly property bool groupByApp: setting("groupByApp", false)
     readonly property bool compactMode: setting("compactMode", false)
     readonly property bool allMonitors: setting("allMonitors", false)
@@ -71,6 +79,7 @@ PluginComponent {
     readonly property var ungroupAppIds: appIdList(setting("ungroupAppIds", ""))
     readonly property bool reverseMonitorOrder: setting("reverseMonitorOrder", false)
     readonly property bool filledPills: setting("filledPills", false)
+    readonly property bool unreadBadge: setting("unreadBadge", true)
 
     readonly property real iconPadding: setting("iconPadding", Theme.spacingS)
     readonly property real itemSpacing: setting("itemSpacing", Theme.spacingXS)
@@ -844,6 +853,7 @@ PluginComponent {
             readonly property bool isCoreApp: coreAppData !== null
             readonly property bool isVerticalEntry: parent && parent.objectName === "verticalEntries"
             property bool isFocused: entryData ? entryData.focused : false
+            property int unreadCount: entryData && root.unreadBadge ? (entryData.unreadCount || 0) : 0
             readonly property real entryIconSize: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
 
             width: root.compactMode ? entryIconSize + root.iconPadding * 2 : entryIconSize + root.iconPadding * 3 + 120
@@ -916,7 +926,7 @@ PluginComponent {
                     anchors.rightMargin: root.iconPadding
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !root.compactMode
-                    text: appEntry.windowTitle
+                    text: root.entryLabel(appEntry.windowTitle)
                     font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
                     color: Theme.widgetTextColor
                     elide: Text.ElideRight
@@ -941,6 +951,29 @@ PluginComponent {
                         text: appEntry.windowCount > 9 ? "9+" : appEntry.windowCount
                         font.pixelSize: Theme.fontSizeSmall * 0.8
                         color: Theme.surface
+                    }
+                }
+
+                Rectangle {
+                    id: unreadBadge
+
+                    anchors.right: appIcon.right
+                    anchors.top: appIcon.top
+                    anchors.rightMargin: -3
+                    anchors.topMargin: -3
+                    width: Math.max(14, unreadBadgeText.implicitWidth + 8)
+                    height: 14
+                    radius: 7
+                    color: Theme.error
+                    visible: appEntry.unreadCount > 0
+                    z: 11
+
+                    StyledText {
+                        id: unreadBadgeText
+                        anchors.centerIn: parent
+                        text: appEntry.unreadCount > 99 ? "99+" : String(appEntry.unreadCount)
+                        font.pixelSize: 9
+                        color: Theme.onError
                     }
                 }
 

@@ -11,6 +11,7 @@ A [Dank Material Shell](https://danklinux.com) plugin that displays running appl
 - Click workspace pills to switch workspaces
 - Click to focus windows, middle-click to close, right-click for context menu
 - Optional app grouping with window count badges
+- Unread badges: a leading count in the window title, such as `(3) WhatsApp`, becomes a notification badge on the app icon and is stripped from the label
 - Right-click menu with application desktop-entry actions (when supplied), Close, and grouped-window selection/Close All when Group by App is enabled. Close targets the representative window; Close All affects only the selected workspace/app group.
 - Compact icon-only mode
 - Horizontal and vertical bar support
@@ -21,6 +22,7 @@ A [Dank Material Shell](https://danklinux.com) plugin that displays running appl
 |---------|-------------|
 | Compact Mode | Show only app icons without window titles |
 | Group by App | Collapse multiple windows of the same app into one entry with a count badge |
+| Unread Badge | Show the leading count some apps put in the window title (WhatsApp, Teams) as a notification badge on the app icon |
 | Show All Monitors | Show workspaces from all monitors instead of only the current one |
 | Reverse Monitor Order | Reverse the order in which monitors are displayed when showing all monitors |
 | Filled Pills (Vertical) | Use solid filled workspace pills instead of outlined borders |
