@@ -49,6 +49,26 @@ PluginComponent {
     readonly property real itemSpacing: pluginData.itemSpacing !== undefined ? pluginData.itemSpacing : Theme.spacingXS
     readonly property real workspaceSpacing: pluginData.workspaceSpacing !== undefined ? pluginData.workspaceSpacing : Theme.spacingXS
 
+    function coreAppFor(appId, title) {
+        if (appId !== "org.quickshell" || !title)
+            return null;
+        const coreApps = AppSearchService.coreApps || [];
+        for (let i = 0; i < coreApps.length; i++) {
+            if (coreApps[i].name === title)
+                return coreApps[i];
+        }
+        return null;
+    }
+
+    function entryIconSource(appId, title) {
+        const coreApp = root.coreAppFor(appId, title);
+        if (coreApp && coreApp.icon)
+            return Quickshell.iconPath(coreApp.icon, true) || "";
+        if (!appId)
+            return "";
+        return Paths.getAppIcon(appId, DesktopEntries.heuristicLookup(appId));
+    }
+
     // DMS gives every widget the width available to its section. The taskbar is
     // in the left section and must not grow underneath the center/right widgets,
     // so it uses this budget to shrink its labels. Declaring the property is
@@ -57,6 +77,7 @@ PluginComponent {
 
     readonly property real entryIconSize: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
     readonly property real pillInset: Math.max(root.iconPadding, Theme.spacingXS)
+    readonly property real overflowPillReserve: Math.ceil(overflowTextMetrics.implicitWidth + root.pillInset * 2)
     readonly property real taskbarBudget: {
         if (root.isVertical || root.section !== "left")
             return Infinity;
@@ -272,16 +293,45 @@ PluginComponent {
         pillInset: root.pillInset,
         minLabelWidth: 32,
         maxLabelWidth: 120,
-        overflowWidth: 0
+        overflowWidth: root.overflowPillReserve
     })
 
     property var _pendingContextMenu: null
+    property var _pendingOverflowMenu: null
+
+    function openOverflowMenu(item) {
+        if (!item || root.layoutPlan.overflowCount <= 0)
+            return;
+        const globalPos = item.mapToGlobal(0, 0);
+        const screenX = root.parentScreen ? root.parentScreen.x : 0;
+        const screenHeight = root.parentScreen ? root.parentScreen.height : 1080;
+        const relativeX = globalPos.x - screenX;
+        const isBottom = (root.axis?.edge ?? "bottom") === "bottom";
+        const menuY = isBottom
+            ? (screenHeight - root.barThickness - root.barSpacing - Theme.spacingXS)
+            : (root.barThickness + root.barSpacing + Theme.spacingXS);
+        const pending = {
+            "x": relativeX + item.width / 2,
+            "y": menuY,
+            "entries": root.layoutPlan.hiddenEntries
+        };
+        if (windowContextMenuLoader.item)
+            windowContextMenuLoader.item.showOverflowAt(pending.x, pending.y, pending.entries);
+        else {
+            root._pendingOverflowMenu = pending;
+            windowContextMenuLoader.active = true;
+        }
+    }
 
     Loader {
         id: windowContextMenuLoader
         active: false
         onLoaded: {
-            if (root._pendingContextMenu && item) {
+            if (root._pendingOverflowMenu && item) {
+                const pending = root._pendingOverflowMenu;
+                item.showOverflowAt(pending.x, pending.y, pending.entries);
+                root._pendingOverflowMenu = null;
+            } else if (root._pendingContextMenu && item) {
                 const pending = root._pendingContextMenu;
                 item.showAt(pending.x, pending.y, root.isVertical, root.axis?.edge,
                     pending.entryRecord, pending.entryKey);
@@ -293,6 +343,8 @@ PluginComponent {
 
             property var currentEntryRecord: null
             property string currentEntryKey: ""
+            property var overflowEntries: []
+            readonly property bool overflowVisible: overflowEntries.length > 0
             property var desktopEntry: currentEntryRecord && currentEntryRecord.appId
                 ? DesktopEntries.heuristicLookup(currentEntryRecord.appId) : null
             property bool isVisible: false
@@ -300,12 +352,12 @@ PluginComponent {
             property bool isVertical: false
             property string edge: "bottom"
             readonly property bool windowSelectionVisible: root.groupByApp && currentEntryRecord
-                && currentEntryRecord.isGrouped && (currentEntryRecord.payloads || []).length > 1
-            readonly property bool hasDesktopActions: desktopEntry && desktopEntry.actions
+                && !overflowVisible && currentEntryRecord.isGrouped && (currentEntryRecord.payloads || []).length > 1
+            readonly property bool hasDesktopActions: !overflowVisible && desktopEntry && desktopEntry.actions
                 && desktopEntry.actions.length > 0
-            readonly property bool hasWindows: currentEntryRecord && (currentEntryRecord.windows || []).length > 0
+            readonly property bool hasWindows: !overflowVisible && currentEntryRecord && (currentEntryRecord.windows || []).length > 0
             readonly property bool closeAllVisible: root.groupByApp && currentEntryRecord
-                && currentEntryRecord.isGrouped && (currentEntryRecord.windows || []).length > 1
+                && !overflowVisible && currentEntryRecord.isGrouped && (currentEntryRecord.windows || []).length > 1
             readonly property real menuMaxHeight: Math.max(1, contextMenuWindow.height - 20)
 
             function showAt(x, y, vertical, barEdge, entryRecord, entryKey) {
@@ -315,6 +367,22 @@ PluginComponent {
                 edge = barEdge ?? "bottom";
                 currentEntryRecord = entryRecord || null;
                 currentEntryKey = entryKey || (entryRecord ? entryRecord.entryKey : "");
+                overflowEntries = [];
+                isVisible = true;
+                visible = true;
+                if (screen) {
+                    TrayMenuManager.registerMenu(screen.name, contextMenuWindow);
+                }
+            }
+
+            function showOverflowAt(x, y, entries) {
+                screen = root.parentScreen;
+                anchorPos = Qt.point(x, y);
+                isVertical = root.isVertical;
+                edge = root.axis?.edge ?? "bottom";
+                currentEntryRecord = null;
+                currentEntryKey = "";
+                overflowEntries = entries || [];
                 isVisible = true;
                 visible = true;
                 if (screen) {
@@ -334,6 +402,7 @@ PluginComponent {
                 visible = false;
                 currentEntryRecord = null;
                 currentEntryKey = "";
+                overflowEntries = [];
                 windowContextMenuLoader.active = false;
                 if (screen) {
                     TrayMenuManager.unregisterMenu(screen.name);
@@ -419,6 +488,97 @@ PluginComponent {
                         id: menuColumn
                         width: menuFlickable.width
                         spacing: 1
+
+                    Repeater {
+                        model: contextMenuWindow.overflowVisible ? contextMenuWindow.overflowEntries : []
+
+                        Rectangle {
+                            width: parent.width
+                            height: 30
+                            radius: Theme.cornerRadius
+                            color: overflowArea.containsMouse
+                                ? Theme.widgetBaseHoverColor : "transparent"
+
+                            Item {
+                                id: overflowIconBox
+                                anchors.left: parent.left
+                                anchors.leftMargin: Theme.spacingS
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 18
+                                height: 18
+
+                                IconImage {
+                                    id: overflowIcon
+                                    anchors.fill: parent
+                                    source: {
+                                        root._desktopEntriesUpdateTrigger;
+                                        root._appIdSubstitutionsTrigger;
+                                        return modelData.entry
+                                            ? root.entryIconSource(modelData.entry.appId, modelData.entry.title) : "";
+                                    }
+                                    smooth: true
+                                    mipmap: true
+                                    asynchronous: true
+                                    visible: status === Image.Ready
+                                }
+
+                                DankIcon {
+                                    anchors.centerIn: parent
+                                    name: "apps"
+                                    size: 16
+                                    color: Theme.widgetTextColor
+                                    visible: !overflowIcon.visible
+                                }
+                            }
+
+                            StyledText {
+                                anchors.left: overflowIconBox.right
+                                anchors.leftMargin: Theme.spacingS
+                                anchors.right: overflowCountBadge.left
+                                anchors.rightMargin: Theme.spacingXS
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.entry ? modelData.entry.title : ""
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.widgetTextColor
+                                wrapMode: Text.NoWrap
+                                elide: Text.ElideRight
+                                maximumLineCount: 1
+                            }
+
+                            Rectangle {
+                                id: overflowCountBadge
+                                anchors.right: parent.right
+                                anchors.rightMargin: Theme.spacingS
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 18
+                                height: 18
+                                radius: 9
+                                color: Theme.primary
+                                visible: modelData.entry && modelData.entry.isGrouped
+                                    && (modelData.entry.windows || []).length > 1
+
+                                StyledText {
+                                    anchors.centerIn: parent
+                                    text: modelData.entry && (modelData.entry.windows || []).length > 9
+                                        ? "9+" : String(modelData.entry ? (modelData.entry.windows || []).length : 0)
+                                    font.pixelSize: 9
+                                    color: Theme.surface
+                                }
+                            }
+
+                            MouseArea {
+                                id: overflowArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (modelData.entry)
+                                        modelData.entry.activateNext();
+                                    contextMenuWindow.close();
+                                }
+                            }
+                        }
+                    }
 
                     Repeater {
                         model: contextMenuWindow.windowSelectionVisible
@@ -634,7 +794,7 @@ PluginComponent {
 
                 Repeater {
                     model: ScriptModel {
-                        values: root.groupedWorkspaces
+                        values: root.layoutPlan.visibleWorkspaces
                         objectProp: "workspaceId"
                     }
 
@@ -681,6 +841,37 @@ PluginComponent {
                                 delegate: appEntryDelegate
                             }
                         }
+                    }
+                }
+
+                Rectangle {
+                    id: overflowPill
+                    visible: root.layoutPlan.overflowCount > 0
+                    readonly property real pillInset: Math.max(root.iconPadding, Theme.spacingXS)
+                    width: overflowLabel.implicitWidth + pillInset * 2
+                    height: Math.max(root.widgetThickness, overflowLabel.implicitHeight + pillInset * 2)
+                    radius: root.filledPills ? Theme.cornerRadius : Theme.cornerRadius * 1.5
+                    color: root.filledPills
+                        ? (overflowMouse.containsMouse ? Theme.withAlpha(Theme.surfaceText, 0.15) : Theme.surfaceTextAlpha)
+                        : (overflowMouse.containsMouse ? Theme.withAlpha(Theme.surfaceText, 0.15) : "transparent")
+                    border.width: root.filledPills ? 0 : 1
+                    border.color: root.filledPills ? "transparent" : Theme.withAlpha(Theme.outline, 0.4)
+
+                    StyledText {
+                        id: overflowLabel
+                        anchors.centerIn: parent
+                        text: "+" + (root.layoutPlan.overflowCount > 999 ? "999" : root.layoutPlan.overflowCount)
+                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                        color: Theme.widgetTextColor
+                    }
+
+                    MouseArea {
+                        id: overflowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: root.openOverflowMenu(overflowPill)
                     }
                 }
             }
@@ -768,16 +959,7 @@ PluginComponent {
             property string appId: entryData ? entryData.appId : ""
             readonly property string effectiveAppId: appId
             property string windowTitle: entryData ? entryData.title : "(Unnamed)"
-            property var coreAppData: {
-                if (appEntry.appId !== "org.quickshell" || !appEntry.windowTitle)
-                    return null;
-                const coreApps = AppSearchService.coreApps || [];
-                for (let i = 0; i < coreApps.length; i++) {
-                    if (coreApps[i].name === appEntry.windowTitle)
-                        return coreApps[i];
-                }
-                return null;
-            }
+            readonly property var coreAppData: root.coreAppFor(appEntry.appId, appEntry.windowTitle)
             readonly property bool isCoreApp: coreAppData !== null
             readonly property bool isVerticalEntry: parent && parent.objectName === "verticalEntries"
             property bool isFocused: entryData ? entryData.focused : false
@@ -810,12 +992,7 @@ PluginComponent {
                     source: {
                         root._desktopEntriesUpdateTrigger;
                         root._appIdSubstitutionsTrigger;
-                        if (appEntry.isCoreApp && appEntry.coreAppData && appEntry.coreAppData.icon)
-                            return Quickshell.iconPath(appEntry.coreAppData.icon, true) || "";
-                        if (!appEntry.effectiveAppId)
-                            return "";
-                        const desktopEntry = DesktopEntries.heuristicLookup(appEntry.effectiveAppId);
-                        return Paths.getAppIcon(appEntry.effectiveAppId, desktopEntry);
+                        return root.entryIconSource(appEntry.effectiveAppId, appEntry.windowTitle);
                     }
                     smooth: true
                     mipmap: true
@@ -936,5 +1113,15 @@ PluginComponent {
                 }
             }
         }
+    }
+
+    // Reserved width for the +N pill, measured with the widest label it can
+    // render. An invisible item still reports its implicit size, so the planner
+    // can reserve the space before choosing how many entries stay in the bar.
+    StyledText {
+        id: overflowTextMetrics
+        visible: false
+        text: "+999"
+        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
     }
 }

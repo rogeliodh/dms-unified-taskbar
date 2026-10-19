@@ -617,3 +617,30 @@ test("adaptive_layout_shrinks_labels_before_overflowing", () => {
     assert.equal(plan.overflowCount, 0, "shrinking labels is enough; nothing needs the overflow menu");
     assert.equal(plan.visibleWorkspaces[0].entries.length, 2);
 });
+
+test("adaptive_layout_overflows_trailing_entries_before_hiding_labels", () => {
+    const focused = layoutEntry("editor", { focused: true });
+    const trailing = layoutEntry("terminal");
+    const plan = model.planTaskbarLayout([
+        layoutWorkspace(1, [focused, trailing], { active: true }),
+    ], layoutMetrics({ budget: 130 }));
+
+    assert.equal(plan.labelWidth, 32, "the minimum label is kept instead of switching to icons");
+    assert.equal(plan.overflowCount, 1);
+    assert.deepEqual(Array.from(plan.visibleWorkspaces[0].entries, entry => entry.entryKey), ["editor"],
+        "the focused entry stays in the bar");
+    assert.equal(plan.hiddenEntries[0].entry, trailing);
+    assert.equal(plan.hiddenEntries[0].workspaceId, 1);
+});
+
+test("adaptive_layout_overflows_with_compact_widths_when_needed", () => {
+    const entries = [layoutEntry("one"), layoutEntry("two"), layoutEntry("three")];
+    const plan = model.planTaskbarLayout([
+        layoutWorkspace(1, entries, { active: true }),
+    ], layoutMetrics({ budget: 90, compact: true }));
+
+    assert.equal(plan.labelWidth, 0);
+    assert.equal(plan.entryWidth, 24 + 4 * 2, "compact entries use the icon-only width");
+    assert.equal(plan.overflowCount, 2);
+    assert.deepEqual(Array.from(plan.visibleWorkspaces[0].entries, entry => entry.entryKey), ["one"]);
+});
