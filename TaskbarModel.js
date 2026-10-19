@@ -393,7 +393,8 @@ function _cloneEntries(entries) {
  * left section that grows past the center/right widgets is painted underneath
  * them. The taskbar therefore receives the width DMS makes available and has to
  * fit inside it. Labels shrink first; they never disappear automatically here,
- * because compact mode is the explicit icons-only setting.
+ * because compact mode is the explicit icons-only setting. If the minimum label
+ * still does not fit, trailing entries move into a +N overflow menu.
  */
 var TASKBAR_DEFAULT_MAX_LABEL_WIDTH = 120;
 var TASKBAR_MIN_LABEL_WIDTH = 32;
@@ -428,20 +429,21 @@ function _layoutEntryCount(workspaces) {
     return count;
 }
 
-function _layoutBaseWidth(workspaces, metrics) {
-    // Everything except the labels: icons, paddings, inter-entry spacing and
-    // workspace-pill chrome. An active workspace with no clients keeps its
-    // (empty) pill, exactly like the view does.
+function _layoutWidth(workspaces, kept, metrics, entryWidth, overflowVisible, keepActiveEmpty) {
+    // Width of the actual pill row. `kept` is a [workspace][entry] matrix of
+    // booleans (null means every entry), so the planner can measure a trial
+    // layout without touching the production records.
     var total = 0;
     var pills = 0;
-    var entryWidth = metrics.compact ? metrics.iconSize + metrics.iconPadding * 2
-                                     : metrics.iconSize + metrics.iconPadding * 3;
     for (var i = 0; i < workspaces.length; i++) {
         var workspace = workspaces[i];
         var entries = workspace && workspace.entries ? workspace.entries : [];
-        var count = entries.length;
+        var count = 0;
+        for (var j = 0; j < entries.length; j++) {
+            if (!kept || kept[i][j]) count += 1;
+        }
         if (count === 0) {
-            if (workspace && workspace.active) {
+            if (workspace && workspace.active && keepActiveEmpty) {
                 total += metrics.pillInset * 2;
                 pills += 1;
             }
@@ -450,13 +452,39 @@ function _layoutBaseWidth(workspaces, metrics) {
         total += count * entryWidth + (count - 1) * metrics.itemSpacing + metrics.pillInset * 2;
         pills += 1;
     }
+    if (overflowVisible) {
+        total += metrics.overflowWidth;
+        pills += 1;
+    }
     if (pills > 1) total += (pills - 1) * metrics.workspaceSpacing;
     return total;
+}
+
+function _layoutBaseEntryWidth(metrics) {
+    return metrics.compact ? metrics.iconSize + metrics.iconPadding * 2
+                           : metrics.iconSize + metrics.iconPadding * 3;
+}
+
+function _layoutBaseWidth(workspaces, metrics) {
+    // Everything except the labels: icons, paddings, inter-entry spacing and
+    // workspace-pill chrome. An active workspace with no clients keeps its
+    // (empty) pill, exactly like the view does.
+    return _layoutWidth(workspaces, null, metrics, _layoutBaseEntryWidth(metrics), false, true);
 }
 
 function _clampLabelWidth(value, metrics) {
     if (!isFinite(value)) return metrics.maxLabelWidth;
     return Math.max(metrics.minLabelWidth, Math.min(metrics.maxLabelWidth, Math.floor(value)));
+}
+
+function _copyWorkspace(workspace, entries) {
+    return {
+        workspaceId: workspace.workspaceId,
+        workspace: workspace.workspace,
+        active: workspace.active,
+        hasClients: workspace.hasClients,
+        entries: entries
+    };
 }
 
 function planTaskbarLayout(workspaces, metrics) {
@@ -470,12 +498,84 @@ function planTaskbarLayout(workspaces, metrics) {
     }
     var entryWidth = metrics.compact ? metrics.iconSize + metrics.iconPadding * 2
                                      : metrics.iconSize + metrics.iconPadding * 3 + labelWidth;
+    var allVisibleWidth = _layoutWidth(workspaces, null, metrics, entryWidth, false, true);
+    if (!isFinite(metrics.budget) || allVisibleWidth <= metrics.budget) {
+        return {
+            labelWidth: labelWidth,
+            entryWidth: entryWidth,
+            visibleWorkspaces: workspaces,
+            hiddenEntries: [],
+            overflowCount: 0
+        };
+    }
+
+    // The minimum label still does not fit: move trailing entries into the
+    // overflow menu instead of drawing underneath the next widget. Focused
+    // entries are the last ones to leave the bar.
+    var kept = [];
+    for (var workspaceIndex = 0; workspaceIndex < workspaces.length; workspaceIndex++) {
+        var workspaceEntries = workspaces[workspaceIndex] && workspaces[workspaceIndex].entries
+            ? workspaces[workspaceIndex].entries : [];
+        var keptEntries = [];
+        for (var entryIndex = 0; entryIndex < workspaceEntries.length; entryIndex++) keptEntries.push(true);
+        kept.push(keptEntries);
+    }
+    var hiddenCount = 0;
+    var width = allVisibleWidth;
+    var keepActiveEmpty = true;
+
+    function removeTrailing(predicate) {
+        for (var wi = workspaces.length - 1; wi >= 0; wi--) {
+            var entries = workspaces[wi] && workspaces[wi].entries ? workspaces[wi].entries : [];
+            for (var ei = entries.length - 1; ei >= 0; ei--) {
+                if (!kept[wi][ei] || !predicate(entries[ei])) continue;
+                kept[wi][ei] = false;
+                hiddenCount += 1;
+                width = _layoutWidth(workspaces, kept, metrics, entryWidth, true, keepActiveEmpty);
+                if (width <= metrics.budget) return true;
+            }
+        }
+        return false;
+    }
+
+    if (!removeTrailing(function (entry) { return !entry.focused; }))
+        removeTrailing(function () { return true; });
+
+    if (width > metrics.budget) {
+        // Keep the +N pill reachable even when the active workspace pill itself
+        // no longer fits (very narrow bar / very large font).
+        keepActiveEmpty = false;
+        width = _layoutWidth(workspaces, kept, metrics, entryWidth, true, keepActiveEmpty);
+    }
+
+    var visibleWorkspaces = [];
+    var hiddenEntries = [];
+    for (var visibleIndex = 0; visibleIndex < workspaces.length; visibleIndex++) {
+        var workspace = workspaces[visibleIndex];
+        var entries = workspace && workspace.entries ? workspace.entries : [];
+        var visibleEntries = [];
+        for (var candidateIndex = 0; candidateIndex < entries.length; candidateIndex++) {
+            var entry = entries[candidateIndex];
+            if (kept[visibleIndex][candidateIndex]) {
+                visibleEntries.push(entry);
+            } else {
+                hiddenEntries.push({
+                    workspaceId: workspace.workspaceId,
+                    workspace: workspace.workspace,
+                    entry: entry
+                });
+            }
+        }
+        if (visibleEntries.length > 0 || (workspace.active && keepActiveEmpty))
+            visibleWorkspaces.push(_copyWorkspace(workspace, visibleEntries));
+    }
+
     return {
         labelWidth: labelWidth,
         entryWidth: entryWidth,
-        visibleWorkspaces: workspaces,
-        hiddenEntries: [],
-        overflowCount: 0
+        visibleWorkspaces: visibleWorkspaces,
+        hiddenEntries: hiddenEntries,
+        overflowCount: hiddenEntries.length
     };
 }
 
