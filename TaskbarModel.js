@@ -387,6 +387,98 @@ function _cloneEntries(entries) {
     return result;
 }
 
+/* Width-aware layout planning for the horizontal taskbar.
+ *
+ * The DankBar lays its left, center and right sections out independently, so a
+ * left section that grows past the center/right widgets is painted underneath
+ * them. The taskbar therefore receives the width DMS makes available and has to
+ * fit inside it. Labels shrink first; they never disappear automatically here,
+ * because compact mode is the explicit icons-only setting.
+ */
+var TASKBAR_DEFAULT_MAX_LABEL_WIDTH = 120;
+var TASKBAR_MIN_LABEL_WIDTH = 32;
+
+function _layoutNumber(value, fallback) {
+    var number = Number(value);
+    return value !== undefined && value !== null && isFinite(number) && number >= 0 ? number : fallback;
+}
+
+function _layoutMetrics(metrics) {
+    metrics = metrics || {};
+    return {
+        budget: _layoutNumber(metrics.budget, Infinity),
+        compact: metrics.compact === true,
+        iconSize: _layoutNumber(metrics.iconSize, 24),
+        iconPadding: _layoutNumber(metrics.iconPadding, 4),
+        itemSpacing: _layoutNumber(metrics.itemSpacing, 2),
+        workspaceSpacing: _layoutNumber(metrics.workspaceSpacing, 4),
+        pillInset: _layoutNumber(metrics.pillInset, 4),
+        minLabelWidth: _layoutNumber(metrics.minLabelWidth, TASKBAR_MIN_LABEL_WIDTH),
+        maxLabelWidth: _layoutNumber(metrics.maxLabelWidth, TASKBAR_DEFAULT_MAX_LABEL_WIDTH),
+        overflowWidth: _layoutNumber(metrics.overflowWidth, 40)
+    };
+}
+
+function _layoutEntryCount(workspaces) {
+    var count = 0;
+    for (var i = 0; i < workspaces.length; i++) {
+        var entries = workspaces[i] && workspaces[i].entries ? workspaces[i].entries : [];
+        count += entries.length;
+    }
+    return count;
+}
+
+function _layoutBaseWidth(workspaces, metrics) {
+    // Everything except the labels: icons, paddings, inter-entry spacing and
+    // workspace-pill chrome. An active workspace with no clients keeps its
+    // (empty) pill, exactly like the view does.
+    var total = 0;
+    var pills = 0;
+    var entryWidth = metrics.compact ? metrics.iconSize + metrics.iconPadding * 2
+                                     : metrics.iconSize + metrics.iconPadding * 3;
+    for (var i = 0; i < workspaces.length; i++) {
+        var workspace = workspaces[i];
+        var entries = workspace && workspace.entries ? workspace.entries : [];
+        var count = entries.length;
+        if (count === 0) {
+            if (workspace && workspace.active) {
+                total += metrics.pillInset * 2;
+                pills += 1;
+            }
+            continue;
+        }
+        total += count * entryWidth + (count - 1) * metrics.itemSpacing + metrics.pillInset * 2;
+        pills += 1;
+    }
+    if (pills > 1) total += (pills - 1) * metrics.workspaceSpacing;
+    return total;
+}
+
+function _clampLabelWidth(value, metrics) {
+    if (!isFinite(value)) return metrics.maxLabelWidth;
+    return Math.max(metrics.minLabelWidth, Math.min(metrics.maxLabelWidth, Math.floor(value)));
+}
+
+function planTaskbarLayout(workspaces, metrics) {
+    workspaces = Array.isArray(workspaces) ? workspaces : [];
+    metrics = _layoutMetrics(metrics);
+    var entryCount = _layoutEntryCount(workspaces);
+    var labelWidth = 0;
+    if (!metrics.compact && entryCount > 0) {
+        var availableForLabels = metrics.budget - _layoutBaseWidth(workspaces, metrics);
+        labelWidth = _clampLabelWidth(availableForLabels / entryCount, metrics);
+    }
+    var entryWidth = metrics.compact ? metrics.iconSize + metrics.iconPadding * 2
+                                     : metrics.iconSize + metrics.iconPadding * 3 + labelWidth;
+    return {
+        labelWidth: labelWidth,
+        entryWidth: entryWidth,
+        visibleWorkspaces: workspaces,
+        hiddenEntries: [],
+        overflowCount: 0
+    };
+}
+
 
 
 

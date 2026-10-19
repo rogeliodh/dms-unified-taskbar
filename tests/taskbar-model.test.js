@@ -26,6 +26,7 @@ function loadProductionModel() {
         "compareStructure",
         "structuralEqual",
         "splitTitleCount",
+        "planTaskbarLayout",
     ];
     const context = vm.createContext({});
     const exportSource = `${source}
@@ -71,6 +72,43 @@ function workspace(workspaceId, options = {}) {
         workspace: options.workspace || { id: workspaceId },
         active: options.active === true,
         hasClients: options.hasClients === true,
+    };
+}
+
+function layoutEntry(key, options = {}) {
+    return {
+        entryKey: key,
+        appId: options.appId || key,
+        title: options.title || key,
+        isGrouped: options.isGrouped === true,
+        focused: options.focused === true,
+        windows: options.windows || [{ key }],
+    };
+}
+
+function layoutWorkspace(workspaceId, entries, options = {}) {
+    return {
+        workspaceId,
+        workspace: { id: workspaceId },
+        active: options.active === true,
+        hasClients: entries.length > 0,
+        entries,
+    };
+}
+
+function layoutMetrics(overrides = {}) {
+    return {
+        budget: 600,
+        compact: false,
+        iconSize: 24,
+        iconPadding: 4,
+        itemSpacing: 2,
+        workspaceSpacing: 4,
+        pillInset: 4,
+        minLabelWidth: 32,
+        maxLabelWidth: 120,
+        overflowWidth: 40,
+        ...overrides,
     };
 }
 
@@ -660,4 +698,31 @@ test("grouped_unread_counts_sum_and_refresh_in_place", () => {
         windows: [first, second],
     }), state);
     assert.deepEqual(Array.from(ungrouped.workspaces[0].entries, entry => entry.unreadCount), [1, 2], "ungrouped windows keep their own counts");
+});
+
+test("adaptive_layout_keeps_full_labels_when_they_fit", () => {
+    const entries = [layoutEntry("editor"), layoutEntry("terminal")];
+    const plan = model.planTaskbarLayout([
+        layoutWorkspace(1, entries, { active: true }),
+    ], layoutMetrics({ budget: 600 }));
+
+    assert.equal(plan.labelWidth, 120, "the preferred label width is kept when the budget allows it");
+    assert.equal(plan.entryWidth, 24 + 4 * 3 + 120);
+    assert.equal(plan.overflowCount, 0);
+    assert.equal(plan.visibleWorkspaces[0].entries.length, 2);
+    assert.equal(plan.visibleWorkspaces[0].entries[0], entries[0], "the plan does not clone entries when every entry fits");
+});
+
+test("adaptive_layout_shrinks_labels_before_overflowing", () => {
+    const entries = [layoutEntry("editor"), layoutEntry("terminal")];
+    const plan = model.planTaskbarLayout([
+        layoutWorkspace(1, entries, { active: true }),
+    ], layoutMetrics({ budget: 200 }));
+
+    // base width: 2 * (24 + 3 * 4) + 1 * 2 + 2 * 4 = 82
+    // label budget: (200 - 82) / 2 = 59
+    assert.equal(plan.labelWidth, 59);
+    assert.ok(plan.labelWidth < 120 && plan.labelWidth >= 32);
+    assert.equal(plan.overflowCount, 0, "shrinking labels is enough; nothing needs the overflow menu");
+    assert.equal(plan.visibleWorkspaces[0].entries.length, 2);
 });
