@@ -49,6 +49,28 @@ PluginComponent {
     readonly property real itemSpacing: pluginData.itemSpacing !== undefined ? pluginData.itemSpacing : Theme.spacingXS
     readonly property real workspaceSpacing: pluginData.workspaceSpacing !== undefined ? pluginData.workspaceSpacing : Theme.spacingXS
 
+    // DMS gives every widget the width available to its section. The taskbar is
+    // in the left section and must not grow underneath the center/right widgets,
+    // so it uses this budget to shrink its labels. Declaring the property is
+    // enough for WidgetHost to bind it.
+    property real sectionAvailablePrimarySize: 0
+
+    readonly property real entryIconSize: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+    readonly property real pillInset: Math.max(root.iconPadding, Theme.spacingXS)
+    readonly property real taskbarBudget: {
+        if (root.isVertical || root.section !== "left")
+            return Infinity;
+        const fallback = root.parentScreen ? root.parentScreen.width / 3 : 640;
+        const section = Number(root.sectionAvailablePrimarySize) || 0;
+        const boundary = section > 1 ? section : fallback;
+        // The widget's offset inside the section is what the section budget
+        // still has to cover. Reading parent.parent (WidgetHost -> wrapper Item)
+        // mirrors how DMS sizes its built-in focused-window widget.
+        const container = root.parent?.parent;
+        const offset = container && isFinite(container.x) ? container.x : 0;
+        return Math.max(0, boundary - offset - Theme.spacingS);
+    }
+
     readonly property real iconCellSize: widgetThickness - ((barConfig?.removeWidgetPadding ?? false) ? 0 : Theme.snap((barConfig?.widgetPadding ?? 12) * (widgetThickness / 30), 1)) * 2
 
     property int _desktopEntriesUpdateTrigger: 0
@@ -240,6 +262,18 @@ PluginComponent {
     }
 
     readonly property var groupedWorkspaces: taskbarModel.visibleWorkspaces
+    readonly property var layoutPlan: TaskbarLogic.planTaskbarLayout(root.groupedWorkspaces, {
+        budget: root.taskbarBudget,
+        compact: root.compactMode,
+        iconSize: root.entryIconSize,
+        iconPadding: root.iconPadding,
+        itemSpacing: root.itemSpacing,
+        workspaceSpacing: root.workspaceSpacing,
+        pillInset: root.pillInset,
+        minLabelWidth: 32,
+        maxLabelWidth: 120,
+        overflowWidth: 0
+    })
 
     property var _pendingContextMenu: null
 
@@ -747,9 +781,11 @@ PluginComponent {
             readonly property bool isCoreApp: coreAppData !== null
             readonly property bool isVerticalEntry: parent && parent.objectName === "verticalEntries"
             property bool isFocused: entryData ? entryData.focused : false
-            readonly property real entryIconSize: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+            readonly property real entryIconSize: root.entryIconSize
+            readonly property real labelWidth: root.layoutPlan.labelWidth
+            readonly property bool showLabel: !root.compactMode && labelWidth > 0
 
-            width: root.compactMode ? entryIconSize + root.iconPadding * 2 : entryIconSize + root.iconPadding * 3 + 120
+            width: root.compactMode ? entryIconSize + root.iconPadding * 2 : entryIconSize + root.iconPadding * 3 + labelWidth
             height: root.compactMode && isVerticalEntry ? entryIconSize + root.iconPadding * 2 : Math.round((root.iconCellSize + root.widgetThickness) / 2)
 
             Rectangle {
@@ -818,7 +854,7 @@ PluginComponent {
                     anchors.right: parent.right
                     anchors.rightMargin: root.iconPadding
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: !root.compactMode
+                    visible: appEntry.showLabel
                     text: appEntry.windowTitle
                     font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
                     color: Theme.widgetTextColor
