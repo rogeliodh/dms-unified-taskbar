@@ -78,17 +78,72 @@ PluginComponent {
     readonly property real entryIconSize: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
     readonly property real pillInset: Math.max(root.iconPadding, Theme.spacingXS)
     readonly property real overflowPillReserve: Math.ceil(overflowTextMetrics.implicitWidth + root.pillInset * 2)
+
+    // DMS only hands widgets the center-section boundary (or a third of the bar
+    // when there is no center widget). Resolve the real center/right section
+    // edges so a bar without center widgets does not shrink labels into
+    // uselessness. If a future shell version renames the sections, the DMS
+    // sectionAvailablePrimarySize value is still used as the fallback.
+    property var _barCenterSection: null
+    property var _barRightSection: null
+
+    function barRootItem() {
+        let item = root;
+        while (item.parent) item = item.parent;
+        return item;
+    }
+
+    function isEffectivelyVisible(item) {
+        for (let node = item; node; node = node.parent) {
+            if (!node.visible)
+                return false;
+        }
+        return true;
+    }
+
+    function findBarSection(name) {
+        const search = function (node) {
+            if (!node) return null;
+            if (node.objectName === name && root.isEffectivelyVisible(node))
+                return node;
+            const children = node.children || [];
+            for (let i = 0; i < children.length; i++) {
+                const found = search(children[i]);
+                if (found) return found;
+            }
+            return null;
+        };
+        return search(root.barRootItem());
+    }
+
+    Component.onCompleted: {
+        root._barCenterSection = root.findBarSection("centerSection");
+        root._barRightSection = root.findBarSection("rightSection");
+    }
+
     readonly property real taskbarBudget: {
         if (root.isVertical || root.section !== "left")
             return Infinity;
         const fallback = root.parentScreen ? root.parentScreen.width / 3 : 640;
         const section = Number(root.sectionAvailablePrimarySize) || 0;
-        const boundary = section > 1 ? section : fallback;
-        // The widget's offset inside the section is what the section budget
-        // still has to cover. Reading parent.parent (WidgetHost -> wrapper Item)
-        // mirrors how DMS sizes its built-in focused-window widget.
+        // The widget's offset inside the section is what the budget still has
+        // to cover. Reading parent.parent (WidgetHost -> wrapper Item) mirrors
+        // how DMS sizes its built-in focused-window widget.
         const container = root.parent?.parent;
-        const offset = container && isFinite(container.x) ? container.x : 0;
+        const barRoot = root.barRootItem();
+        const offset = container && barRoot ? container.mapToItem(barRoot, 0, 0).x : 0;
+        let boundary = 0;
+        if (root._barRightSection && barRoot)
+            boundary = root._barRightSection.mapToItem(barRoot, 0, 0).x;
+        if (root._barCenterSection && barRoot && Number(root._barCenterSection.contentSize) > 0) {
+            // CenterSection spans the whole bar; contentStart is the left edge of
+            // its actual widget row, not the section item itself.
+            const centerStart = Number(root._barCenterSection.contentStart) || 0;
+            const centerLeft = root._barCenterSection.mapToItem(barRoot, 0, 0).x + centerStart;
+            boundary = boundary > 0 ? Math.min(boundary, centerLeft) : centerLeft;
+        }
+        if (!(boundary > 0))
+            boundary = section > 1 ? section : fallback;
         return Math.max(0, boundary - offset - Theme.spacingS);
     }
 
