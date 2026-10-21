@@ -7,7 +7,7 @@ A [Dank Material Shell](https://danklinux.com) plugin that displays running appl
 ## Features
 
 - Windows organized by workspace in pill-shaped containers
-- Multi-compositor support: Niri, Hyprland, Sway, DWL, Scroll, Miracle
+- Supported compositors: Niri, Hyprland, Sway
 - Click workspace pills to switch workspaces
 - Click to focus windows, middle-click to close, right-click for context menu
 - Optional app grouping with window count badges
@@ -51,6 +51,9 @@ dms restart
 ## Requirements
 
 - Dank Material Shell >= 1.2.0
+- Niri, Hyprland, or Sway
+
+Mango and other compositors are not supported. Legacy DWL code remains in the plugin but is not part of current supported compatibility.
 
 ## Development / Testing
 

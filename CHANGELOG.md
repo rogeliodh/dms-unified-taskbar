@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Narrow advertised compositor compatibility to Niri, Hyprland, and Sway. Mango and other compositors, including legacy DWL, are not currently supported; existing dispatch code is unchanged.
+- Use theme-derived font sizes for missing-icon fallback letters and grouped-window count badges. Count badges grow with their text while retaining a 14px minimum size.
+
 ## 1.2.0 — 2026-09-07
 
 ### Performance

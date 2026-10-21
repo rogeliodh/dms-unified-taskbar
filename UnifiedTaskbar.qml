@@ -797,7 +797,7 @@ PluginComponent {
                     visible: !appIcon.visible && Paths.isSteamApp(appEntry.effectiveAppId)
                 }
 
-                Text {
+                StyledText {
                     anchors.centerIn: parent
                     visible: !appIcon.visible && !Paths.isSteamApp(appEntry.effectiveAppId)
                     text: {
@@ -808,7 +808,7 @@ PluginComponent {
                         const appName = Paths.getAppName(appEntry.effectiveAppId, desktopEntry);
                         return appName.charAt(0).toUpperCase();
                     }
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontSizeSmall
                     color: Theme.widgetTextColor
                 }
 
@@ -831,17 +831,18 @@ PluginComponent {
                     anchors.bottom: parent.bottom
                     anchors.rightMargin: root.compactMode ? -2 : 2
                     anchors.bottomMargin: -2
-                    width: 14
-                    height: 14
-                    radius: 7
+                    width: Math.max(14, countBadgeLabel.implicitWidth + 4)
+                    height: Math.max(14, countBadgeLabel.implicitHeight + 4)
+                    radius: height / 2
                     color: Theme.primary
                     visible: appEntry.isGrouped && appEntry.windowCount > 1
                     z: 10
 
                     StyledText {
+                        id: countBadgeLabel
                         anchors.centerIn: parent
                         text: appEntry.windowCount > 9 ? "9+" : appEntry.windowCount
-                        font.pixelSize: 9
+                        font.pixelSize: Theme.fontSizeSmall * 0.8
                         color: Theme.surface
                     }
                 }
