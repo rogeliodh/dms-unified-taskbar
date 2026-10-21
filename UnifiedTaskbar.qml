@@ -6,6 +6,7 @@ import Quickshell.Widgets
 import Quickshell.Hyprland
 import Quickshell.I3
 import qs.Common
+import qs.DCommon.Widgets
 import qs.Modules.Plugins
 import qs.Services
 import qs.Widgets
@@ -689,7 +690,7 @@ PluginComponent {
                                     visible: status === Image.Ready
                                 }
 
-                                DankIcon {
+                                DIcon {
                                     anchors.centerIn: parent
                                     name: "apps"
                                     size: 16
@@ -784,7 +785,7 @@ PluginComponent {
                                 color: windowCloseArea.containsMouse
                                     ? Theme.errorPressed : "transparent"
 
-                                DankIcon {
+                                DIcon {
                                     anchors.centerIn: parent
                                     name: "close"
                                     size: 12
@@ -1172,7 +1173,7 @@ PluginComponent {
                     visible: status === Image.Ready
                 }
 
-                DankIcon {
+                DIcon {
                     anchors.left: parent.left
                     anchors.leftMargin: root.compactMode ? Math.round((parent.width - appEntry.entryIconSize) / 2) : root.iconPadding
                     anchors.verticalCenter: parent.verticalCenter
@@ -1255,7 +1256,7 @@ PluginComponent {
                     }
                 }
 
-                DankRipple {
+                DRipple {
                     id: entryRipple
                     cornerRadius: Theme.cornerRadius * 1.5
                 }

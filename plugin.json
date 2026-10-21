@@ -13,5 +13,6 @@
     "compositors": ["niri", "hyprland", "sway"],
     "distro": "any",
     "dependencies": [],
-    "requires": ">=1.2.0"
+    "requires": ">=1.2.0",
+    "requires_dms": ">=1.2.0"
 }
